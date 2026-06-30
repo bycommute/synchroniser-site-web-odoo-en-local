@@ -21,6 +21,11 @@ class TestImageSyncHelpers(unittest.TestCase):
         path = Path("/tmp/123-image.webp")
         self.assertEqual(mod._sidecar_for(path), Path("/tmp/123-image.webp.odoo.json"))
 
+    def test_iter_sidecars_rejects_project_escape(self) -> None:
+        service = mod.ImageSyncService.__new__(mod.ImageSyncService)
+        with self.assertRaises(ValueError):
+            service._iter_sidecars(["../outside.webp"])
+
     def test_hash_is_stable(self) -> None:
         self.assertEqual(mod._compute_bytes_hash(b"abc"), mod._compute_bytes_hash(b"abc"))
         self.assertNotEqual(mod._compute_bytes_hash(b"abc"), mod._compute_bytes_hash(b"abcd"))

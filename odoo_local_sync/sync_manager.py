@@ -11,7 +11,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-from .config import SYNC_DIRS, ODOO_MODELS, SYNC_STATE_FILE, PROJECT_ROOT, ODOO_CONFIG, WEBSITE_ID
+from .config import (
+    SYNC_DIRS,
+    ODOO_MODELS,
+    SYNC_STATE_FILE,
+    PROJECT_ROOT,
+    ODOO_CONFIG,
+    WEBSITE_ID,
+    require_child_path,
+    resolve_project_path,
+)
 from .odoo_client import get_client
 from .odoo_content_validator import validate_file
 
@@ -276,7 +285,7 @@ class SyncManager:
             content = ""
         # Normaliser le contenu pour éviter les différences de whitespace
         content = content.strip()
-        return hashlib.md5(content.encode("utf-8")).hexdigest()
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
     
     @staticmethod
     def _slugify(text: str) -> str:
@@ -1173,7 +1182,7 @@ class SyncManager:
                             if isinstance(v, (list, tuple)) and len(v) > 1: return str(v[1])
                             return str(v)
                         _meta_str = "|".join(f"{k}={_val(record, k)}" for k in sorted(extra))
-                        _meta_hash = hashlib.md5(_meta_str.encode("utf-8")).hexdigest() if _meta_str else ""
+                        _meta_hash = hashlib.sha256(_meta_str.encode("utf-8")).hexdigest() if _meta_str else ""
                         # Mettre à jour l'état
                         self.state["records"][record_key] = {
                             "id": record["id"],
@@ -1432,15 +1441,12 @@ class SyncManager:
                 # Résoudre les chemins relatifs par rapport à PROJECT_ROOT
                 file_paths = []
                 for f in files:
-                    p = Path(f)
-                    # Si c'est un chemin relatif, le résoudre par rapport à PROJECT_ROOT
-                    if not p.is_absolute():
-                        p = PROJECT_ROOT / p
+                    p = resolve_project_path(f)
                     if not p.exists():
                         continue
                     # Accepte le fichier uniquement s'il appartient au dossier de la catégorie
                     try:
-                        p.relative_to(base_dir)
+                        require_child_path(p, base_dir, f"{cat}/")
                         file_paths.append(p)
                     except ValueError:
                         continue
@@ -1550,7 +1556,7 @@ class SyncManager:
                                 for k in sorted(config.get("extra_fields", []))
                                 if k in created
                             )
-                            meta_hash = hashlib.md5(meta_str.encode("utf-8")).hexdigest() if meta_str else ""
+                            meta_hash = hashlib.sha256(meta_str.encode("utf-8")).hexdigest() if meta_str else ""
                             record_key = self._record_key(cat, record_id, record_lang)
                             self.state["records"][record_key] = {
                                 "id": record_id,
@@ -1625,7 +1631,7 @@ class SyncManager:
                     # Hash des métadonnées (SEO) pour détecter un changement titre/description/keywords sans toucher au contenu
                     extra = [] if content_only else config.get("extra_fields", [])
                     meta_str = "|".join(f"{k}={metadata.get(k, '')}" for k in sorted(extra) if k in metadata)
-                    meta_hash = hashlib.md5(meta_str.encode("utf-8")).hexdigest() if meta_str else ""
+                    meta_hash = hashlib.sha256(meta_str.encode("utf-8")).hexdigest() if meta_str else ""
                     current_hash = self._compute_hash(clean_content)
                     rendered_content = self._render_content_for_push(cat, record_id, metadata, clean_content)
                     content_changed = not state_record or current_hash != state_record.get("content_hash")
@@ -1874,14 +1880,16 @@ class SyncManager:
 
         if files:
             for raw_file in files:
-                path = Path(raw_file)
-                if not path.is_absolute():
-                    path = PROJECT_ROOT / path
+                try:
+                    path = resolve_project_path(raw_file)
+                except ValueError as e:
+                    results["errors"].append({"file": raw_file, "error": str(e)})
+                    continue
                 if not path.exists():
                     results["errors"].append({"file": raw_file, "error": "File not found"})
                     continue
                 try:
-                    path.relative_to(base_dir)
+                    require_child_path(path, base_dir, f"{category}/")
                 except ValueError:
                     results["errors"].append({"file": raw_file, "error": f"File is not in {category}/"})
                     continue
@@ -2036,9 +2044,10 @@ class SyncManager:
         """
         Afficher les différences entre local et remote
         """
-        path = Path(file_path)
-        if not path.is_absolute():
-            path = PROJECT_ROOT / path
+        try:
+            path = resolve_project_path(file_path)
+        except ValueError as e:
+            return {"error": str(e)}
         if not path.exists():
             return {"error": f"File not found: {file_path}"}
         
@@ -2052,7 +2061,7 @@ class SyncManager:
         category = None
         for cat_name, cat_dir in SYNC_DIRS.items():
             try:
-                path.relative_to(cat_dir)
+                require_child_path(path, cat_dir, f"{cat_name}/")
                 category = cat_name
                 break
             except ValueError:

@@ -1,8 +1,12 @@
-"""
-Client Odoo pour communiquer avec l'API XML-RPC
-"""
-import xmlrpc.client
+"""Client Odoo pour communiquer avec l'API XML-RPC."""
+from defusedxml.xmlrpc import monkey_patch
+
+monkey_patch()
+
+# defusedxml.xmlrpc.monkey_patch() is applied above.
+import xmlrpc.client  # nosec B411
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 from .config import ODOO_CONFIG
 
 
@@ -22,6 +26,11 @@ def missing_config_keys() -> List[str]:
         value = str(ODOO_CONFIG.get(key) or "").strip()
         if not value or value in PLACEHOLDER_VALUES:
             missing.append(key)
+    url = str(ODOO_CONFIG.get("url") or "").strip()
+    if url and url not in PLACEHOLDER_VALUES:
+        parts = urlsplit(url)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            missing.append("url")
     return missing
 
 

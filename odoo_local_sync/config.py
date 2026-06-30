@@ -7,6 +7,30 @@ from pathlib import Path
 # the repository where the command is launched.
 PROJECT_ROOT = Path(os.getenv("ODOO_SYNC_PROJECT_ROOT", os.getcwd())).resolve()
 
+
+def resolve_project_path(path: str | Path) -> Path:
+    """Resolve a user-supplied path and require it to stay inside PROJECT_ROOT."""
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(PROJECT_ROOT)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes project root: {path}") from exc
+    return resolved
+
+
+def require_child_path(path: Path, parent: Path, label: str) -> Path:
+    """Require a resolved path to be under a resolved parent directory."""
+    resolved = path.resolve()
+    parent_resolved = parent.resolve()
+    try:
+        resolved.relative_to(parent_resolved)
+    except ValueError as exc:
+        raise ValueError(f"Path is not inside {label}: {path}") from exc
+    return resolved
+
 # Charger le fichier .env s'il existe
 try:
     from dotenv import load_dotenv

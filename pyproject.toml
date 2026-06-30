@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "ByCommute" }]
 dependencies = [
+  "defusedxml>=0.7.1",
   "python-dotenv>=1.0.0",
   "openpyxl>=3.1.0",
 ]

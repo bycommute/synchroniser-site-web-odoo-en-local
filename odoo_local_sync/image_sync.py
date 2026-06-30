@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .config import IMAGE_SYNC_DIR, PROJECT_ROOT
+from .config import IMAGE_SYNC_DIR, PROJECT_ROOT, require_child_path, resolve_project_path
 from .odoo_client import get_client
 
 
@@ -48,7 +48,7 @@ MIMETYPE_EXTENSIONS = {
 
 
 def _compute_bytes_hash(data: bytes) -> str:
-    return hashlib.md5(data or b"").hexdigest()
+    return hashlib.sha256(data or b"").hexdigest()
 
 
 def _slugify(text: str) -> str:
@@ -77,7 +77,7 @@ def _sidecar_for(image_path: Path) -> Path:
 def _image_for_sidecar(sidecar_path: Path, meta: Dict[str, Any]) -> Path:
     raw = meta.get("file")
     if raw:
-        path = PROJECT_ROOT / raw
+        path = resolve_project_path(raw)
         if path.exists():
             return path
     name = sidecar_path.name.removesuffix(".odoo.json")
@@ -167,13 +167,12 @@ class ImageSyncService:
         if files:
             out: List[Path] = []
             for raw in files:
-                path = Path(raw)
-                if not path.is_absolute():
-                    path = PROJECT_ROOT / path
+                path = resolve_project_path(raw)
                 if path.name.endswith(".odoo.json"):
-                    out.append(path)
+                    out.append(require_child_path(path, IMAGE_SYNC_DIR, "images/attachments/"))
                 else:
-                    out.append(_sidecar_for(path))
+                    image_path = require_child_path(path, IMAGE_SYNC_DIR, "images/attachments/")
+                    out.append(_sidecar_for(image_path))
             return out
         return sorted(IMAGE_SYNC_DIR.glob("**/*.odoo.json"))
 

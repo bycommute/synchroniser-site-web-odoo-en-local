@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from .sync_manager import SyncManager
 from .odoo_client import get_client, missing_config_keys
-from .config import ODOO_MODELS, PROJECT_ROOT, SYNC_DIRS
+from .config import ODOO_MODELS, PROJECT_ROOT, SYNC_DIRS, resolve_project_path
 from .redirects_sync import RedirectSyncService, RedirectSyncError
 from .image_sync import ImageSyncService
 from .odoo_content_validator import collect_paths, validate_paths
@@ -112,10 +112,27 @@ def cmd_init(args):
 def _git_targets_for_push(files, category):
     """Limiter le commit de sauvegarde aux fichiers réellement concernés par le push."""
     if files:
-        return [str((PROJECT_ROOT / f) if not Path(f).is_absolute() else Path(f)) for f in files]
+        return [str(_validate_push_file_path(f)) for f in files]
     if category:
         return [str(SYNC_DIRS[category])]
     return [str(SYNC_DIRS[cat]) for cat in ODOO_MODELS]
+
+
+def _validate_push_file_path(file_path: str) -> Path:
+    """Require a pushed file to live inside one configured sync directory."""
+    resolved = resolve_project_path(file_path)
+    for directory in SYNC_DIRS.values():
+        try:
+            resolved.relative_to(directory.resolve())
+            return resolved
+        except ValueError:
+            continue
+    raise ValueError(f"Push file is outside synchronized folders: {file_path}")
+
+
+def _validate_push_files(files: List[str]) -> None:
+    for file_path in files:
+        _validate_push_file_path(file_path)
 
 
 def _display_path(candidate: Path, prefer_relative: bool) -> str:
@@ -268,6 +285,11 @@ def cmd_push(args):
     if args.files:
         # Mode fichiers spécifiques
         files = _expand_files_all_langs(args.files) if args.all_langs else args.files
+        try:
+            _validate_push_files(files)
+        except ValueError as e:
+            print_error(str(e))
+            sys.exit(1)
         category = None
         print_info(f"Mode: Fichiers spécifiques ({len(files)})")
         if args.all_langs and len(files) != len(args.files):
@@ -693,9 +715,7 @@ def cmd_redirects_pull(args):
     print_header("REDIRECTS PULL - Export depuis Odoo")
 
     service = RedirectSyncService()
-    excel_path = Path(args.excel)
-    if not excel_path.is_absolute():
-        excel_path = PROJECT_ROOT / excel_path
+    excel_path = resolve_project_path(args.excel)
 
     print_info(f"Fichier Excel: {excel_path}")
     print_info(f"Onglet: {args.sheet}")
@@ -724,9 +744,7 @@ def cmd_redirects_push(args):
     print_header("REDIRECTS PUSH - Import vers Odoo")
 
     service = RedirectSyncService()
-    excel_path = Path(args.excel)
-    if not excel_path.is_absolute():
-        excel_path = PROJECT_ROOT / excel_path
+    excel_path = resolve_project_path(args.excel)
 
     print_info(f"Fichier Excel: {excel_path}")
     print_info(f"Onglet: {args.sheet}")

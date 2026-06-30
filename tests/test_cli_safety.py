@@ -14,6 +14,14 @@ class TestCliSafety(unittest.TestCase):
         targets = cli._git_targets_for_push(["products/demo.html"], None)
         self.assertEqual(targets, [str(cli.PROJECT_ROOT / "products/demo.html")])
 
+    def test_git_targets_reject_project_escape(self) -> None:
+        with self.assertRaises(ValueError):
+            cli._git_targets_for_push(["../outside.html"], None)
+
+    def test_git_targets_reject_file_outside_sync_dirs(self) -> None:
+        with self.assertRaises(ValueError):
+            cli._git_targets_for_push(["README.md"], None)
+
     def test_git_targets_for_category(self) -> None:
         targets = cli._git_targets_for_push(None, "products")
         self.assertEqual(targets, [str(cli.SYNC_DIRS["products"])])

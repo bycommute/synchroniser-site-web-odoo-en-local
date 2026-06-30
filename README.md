@@ -65,7 +65,7 @@ From a project where you want Odoo content to live:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install git+https://github.com/bycommute/odoo-website-local-sync.git
+pip install git+https://github.com/bycommute/synchroniser-site-web-odoo-en-local.git
 odoo-sync init
 ```
 
